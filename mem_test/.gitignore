@@ -1,0 +1,17 @@
+# VSCode config
+.vscode
+
+# CMake build
+build
+
+# Backup
+*.bk
+*.bak
+*.tmp
+*.swp
+
+# Build generator
+*.o
+*.a
+*.so
+*.dll
