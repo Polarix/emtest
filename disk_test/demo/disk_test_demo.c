@@ -1,5 +1,5 @@
 /**
- * @file test_disk_test.c
+ * @file disk_test_demo.c
  * @brief 磁盘测试模块的示例测试程序
  * 
  * 该程序演示如何使用disk_test模块进行写入、读取和校验测试。
@@ -43,7 +43,7 @@ static int run_test(const char* filepath, size_t file_size, size_t block_size, d
 {
     disk_test_ctx* ctx = NULL;
     int ret = 0;
-    int process_ret;
+    disk_test_result_t process_ret;
     double throughput;
 
     ctx = disk_test_create(filepath, file_size, block_size, mode);
@@ -53,7 +53,7 @@ static int run_test(const char* filepath, size_t file_size, size_t block_size, d
         return -1;
     }
 
-    if (disk_test_open(ctx) != 0)
+    if (disk_test_open(ctx) != DISK_TEST_ERR_NONE)
     {
         fprintf(stderr, "Failed to open file: %s\n", disk_test_get_error(ctx));
         disk_test_destroy(ctx);
@@ -71,18 +71,18 @@ static int run_test(const char* filepath, size_t file_size, size_t block_size, d
                disk_test_get_total_bytes(ctx),
                100.0 * disk_test_get_processed_bytes(ctx) / disk_test_get_total_bytes(ctx));
         fflush(stdout);
-    } while (process_ret == 1);
+    } while (process_ret == DISK_TEST_RESULT_IN_PROGRESS);
 
     printf("\n");
 
-    if (process_ret == -1)
+    if (process_ret == DISK_TEST_RESULT_ERROR)
     {
         fprintf(stderr, "Test failed: %s\n", disk_test_get_error(ctx));
         ret = -1;
     }
     else
     {
-        if (disk_test_get_throughput(ctx, &throughput) == 0)
+        if (disk_test_get_throughput(ctx, &throughput) == DISK_TEST_ERR_NONE)
         {
             printf("%s throughput: %.2f MB/s\n",
                    (mode == DISK_TEST_MODE_WRITE) ? "Write" :
@@ -95,7 +95,7 @@ static int run_test(const char* filepath, size_t file_size, size_t block_size, d
         }
     }
 
-    if (disk_test_close(ctx) != 0)
+    if (disk_test_close(ctx) != DISK_TEST_ERR_NONE)
     {
         fprintf(stderr, "Warning: close failed: %s\n", disk_test_get_error(ctx));
     }
@@ -118,21 +118,45 @@ int main(int argc, char* argv[])
     {
         switch (opt)
         {
-            case 'f': test_file = optarg; break;
+            case 'f':
+                test_file = optarg;
+                break;
             case 's':
                 file_size = atoi(optarg) * 1024 * 1024;
-                if (file_size <= 0) { fprintf(stderr, "Invalid file size\n"); return 1; }
+                if (file_size <= 0)
+                {
+                    fprintf(stderr, "Invalid file size\n");
+                    return 1;
+                }
                 break;
             case 'b':
                 block_size = atoi(optarg) * 1024;
-                if (block_size <= 0) { fprintf(stderr, "Invalid block size\n"); return 1; }
+                if (block_size <= 0)
+                {
+                    fprintf(stderr, "Invalid block size\n");
+                    return 1;
+                }
                 break;
             case 'm':
                 do_write = do_read = do_verify = 0;
-                if (strcmp(optarg, "write") == 0) do_write = 1;
-                else if (strcmp(optarg, "read") == 0) do_read = 1;
-                else if (strcmp(optarg, "verify") == 0) do_verify = 1;
-                else { fprintf(stderr, "Unknown mode: %s\n", optarg); print_usage(argv[0]); return 1; }
+                if (strcmp(optarg, "write") == 0)
+                {
+                    do_write = 1;
+                }
+                else if (strcmp(optarg, "read") == 0)
+                {
+                    do_read = 1;
+                }
+                else if (strcmp(optarg, "verify") == 0)
+                {
+                    do_verify = 1;
+                }
+                else
+                {
+                    fprintf(stderr, "Unknown mode: %s\n", optarg);
+                    print_usage(argv[0]);
+                    return 1;
+                }
                 break;
             case 'h':
             default:
@@ -150,21 +174,30 @@ int main(int argc, char* argv[])
     if (do_write)
     {
         if (run_test(test_file, file_size, block_size, DISK_TEST_MODE_WRITE) != 0)
-        { fprintf(stderr, "Write test failed.\n"); return 1; }
+        {
+            fprintf(stderr, "Write test failed.\n");
+            return 1;
+        }
         printf("\n");
     }
 
     if (do_read)
     {
         if (run_test(test_file, file_size, block_size, DISK_TEST_MODE_READ) != 0)
-        { fprintf(stderr, "Read test failed.\n"); return 1; }
+        {
+            fprintf(stderr, "Read test failed.\n");
+            return 1;
+        }
         printf("\n");
     }
 
     if (do_verify)
     {
         if (run_test(test_file, file_size, block_size, DISK_TEST_MODE_VERIFY) != 0)
-        { fprintf(stderr, "Verify test failed.\n"); return 1; }
+        {
+            fprintf(stderr, "Verify test failed.\n");
+            return 1;
+        }
         printf("\n");
     }
 
