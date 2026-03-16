@@ -8,9 +8,13 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <errno.h>
+#include <stdint.h>
 
 #ifdef _WIN32
-#include <io.h>   // for _commit
+#include <io.h>      // for _commit
+#include <windows.h> // for GetDiskFreeSpaceEx
+#else
+#include <sys/statvfs.h> // for statvfs
 #endif
 
 #define MAX_FILEPATH_LEN 256
@@ -29,11 +33,12 @@ struct st_disk_test_context
     size_t        current_block;
     struct timeval start_time;
     struct timeval end_time;
-    int           status;
+    int           status;      /* 0未开始 1进行中 2已完成 -1错误 */
     int           error_code;
     char          error_msg[256];
 };
 
+/* ---------- 静态辅助函数 ---------- */
 static unsigned char generate_pattern(size_t block_index, size_t offset)
 {
     return (unsigned char)((block_index & 0xFF) + (offset & 0xFF));
@@ -42,20 +47,14 @@ static unsigned char generate_pattern(size_t block_index, size_t offset)
 static void fill_buffer_with_pattern(unsigned char* buffer, size_t block_size, size_t block_index)
 {
     for (size_t i = 0; i < block_size; ++i)
-    {
         buffer[i] = generate_pattern(block_index, i);
-    }
 }
 
 static int verify_buffer_pattern(const unsigned char* buffer, size_t block_size, size_t block_index)
 {
     for (size_t i = 0; i < block_size; ++i)
-    {
         if (buffer[i] != generate_pattern(block_index, i))
-        {
             return -1;
-        }
-    }
     return 0;
 }
 
@@ -67,6 +66,77 @@ static void set_error(disk_test_ctx* ctx, const char* msg)
     ctx->error_msg[sizeof(ctx->error_msg) - 1] = '\0';
 }
 
+/* ---------- 空间检查相关 ---------- */
+/**
+ * @brief 从文件路径中提取目录部分
+ * @param path   完整文件路径
+ * @param dir_buf 输出缓冲区
+ * @param buf_size 缓冲区大小
+ * @return 指向 dir_buf 的指针
+ */
+static const char* get_directory_from_path(const char* path, char* dir_buf, size_t buf_size)
+{
+    if (path == NULL || dir_buf == NULL || buf_size == 0)
+        return ".";
+
+    const char* last_sep = NULL;
+    const char* p = path;
+    while (*p)
+    {
+#ifdef _WIN32
+        if (*p == '/' || *p == '\\')
+#else
+        if (*p == '/')
+#endif
+            last_sep = p;
+        p++;
+    }
+
+    if (last_sep == NULL)
+    {
+        /* 路径中没有分隔符，使用当前目录 */
+        strncpy(dir_buf, ".", buf_size - 1);
+        dir_buf[buf_size - 1] = '\0';
+    }
+    else
+    {
+        size_t len = last_sep - path;
+        if (len >= buf_size) len = buf_size - 1;
+        strncpy(dir_buf, path, len);
+        dir_buf[len] = '\0';
+    }
+    return dir_buf;
+}
+
+/**
+ * @brief 检查指定目录的可用空间是否足够
+ * @param dir_path 目录路径
+ * @param required 需要的最小字节数
+ * @return 0 足够，-1 不足或无法获取
+ */
+static int check_disk_space(const char* dir_path, uint64_t required)
+{
+    if (dir_path == NULL || required == 0)
+        return -1;
+
+#ifdef _WIN32
+    ULARGE_INTEGER free_bytes_available;
+    if (!GetDiskFreeSpaceExA(dir_path, &free_bytes_available, NULL, NULL))
+        return -1; /* 无法获取空间信息 */
+    if (free_bytes_available.QuadPart < required)
+        return -1; /* 空间不足 */
+#else
+    struct statvfs vfs;
+    if (statvfs(dir_path, &vfs) != 0)
+        return -1;
+    uint64_t free_bytes = (uint64_t)vfs.f_frsize * vfs.f_bavail;
+    if (free_bytes < required)
+        return -1;
+#endif
+    return 0; /* 空间足够 */
+}
+
+/* ---------- 公共函数实现 ---------- */
 DISKTEST_API disk_test_ctx* disk_test_create(
     const char* filepath,
     size_t       file_size,
@@ -147,6 +217,19 @@ DISKTEST_API int disk_test_open(disk_test_ctx* ctx)
         {
             ret = -1;
             break;
+        }
+
+        /* 仅写入模式需要检查磁盘空间 */
+        if (ctx->mode == DISK_TEST_MODE_WRITE)
+        {
+            char dir_buf[MAX_FILEPATH_LEN];
+            get_directory_from_path(ctx->filepath, dir_buf, sizeof(dir_buf));
+            if (check_disk_space(dir_buf, ctx->file_size) != 0)
+            {
+                set_error(ctx, "Insufficient disk space or cannot query space");
+                ret = -1;
+                break;
+            }
         }
 
         switch (ctx->mode)
