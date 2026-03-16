@@ -1,5 +1,5 @@
 /**
- * @file test_mem_test.c
+ * @file mem_test_demo.c
  * @brief 内存测试模块的示例测试程序
  *
  * 该程序演示如何使用mem_test模块进行写入、读取和校验测试。
@@ -24,6 +24,9 @@
 #define DEFAULT_TOTAL_SIZE (32 * 1024 * 1024)   /* 32 MB */
 #define DEFAULT_BLOCK_SIZE (4 * 1024)           /* 4 KB */
 
+/**
+ * @brief 打印使用说明
+ */
 static void print_usage(const char* progname)
 {
     printf("Usage: %s [options]\n", progname);
@@ -34,10 +37,13 @@ static void print_usage(const char* progname)
     printf("  -h           Show this help\n");
 }
 
+/**
+ * @brief 执行独立分配内存的单个模式测试
+ */
 static int run_test_independent(size_t total_size, size_t block_size, mem_test_mode_t mode)
 {
     mem_test_ctx* ctx = NULL;
-    int process_ret;
+    mem_test_result_t process_ret;
     double throughput;
     int ret = 0;
 
@@ -48,7 +54,7 @@ static int run_test_independent(size_t total_size, size_t block_size, mem_test_m
         return -1;
     }
 
-    if (mem_test_alloc(ctx) != 0)
+    if (mem_test_alloc(ctx) != MEM_TEST_ERR_NONE)
     {
         fprintf(stderr, "Failed to allocate memory: %s\n", mem_test_get_error(ctx));
         mem_test_destroy(ctx);
@@ -66,17 +72,17 @@ static int run_test_independent(size_t total_size, size_t block_size, mem_test_m
                mem_test_get_total_bytes(ctx),
                100.0 * mem_test_get_processed_bytes(ctx) / mem_test_get_total_bytes(ctx));
         fflush(stdout);
-    } while (process_ret == 1);
+    } while (process_ret == MEM_TEST_RESULT_IN_PROGRESS);
     printf("\n");
 
-    if (process_ret == -1)
+    if (process_ret == MEM_TEST_RESULT_ERROR)
     {
         fprintf(stderr, "Test failed: %s\n", mem_test_get_error(ctx));
         ret = -1;
     }
     else
     {
-        if (mem_test_get_throughput(ctx, &throughput) == 0)
+        if (mem_test_get_throughput(ctx, &throughput) == MEM_TEST_ERR_NONE)
         {
             printf("%s throughput: %.2f MB/s\n",
                    (mode == MEM_TEST_MODE_WRITE) ? "Write" :
@@ -90,10 +96,13 @@ static int run_test_independent(size_t total_size, size_t block_size, mem_test_m
     return ret;
 }
 
+/**
+ * @brief 执行共享同一块内存的顺序测试（写、读、验证）
+ */
 static int run_test_shared(size_t total_size, size_t block_size)
 {
     mem_test_ctx* ctx = NULL;
-    int process_ret;
+    mem_test_result_t process_ret;
     double throughput;
     int ret = 0;
 
@@ -104,7 +113,7 @@ static int run_test_shared(size_t total_size, size_t block_size)
         return -1;
     }
 
-    if (mem_test_alloc(ctx) != 0)
+    if (mem_test_alloc(ctx) != MEM_TEST_ERR_NONE)
     {
         fprintf(stderr, "Failed to allocate memory: %s\n", mem_test_get_error(ctx));
         mem_test_destroy(ctx);
@@ -121,21 +130,21 @@ static int run_test_shared(size_t total_size, size_t block_size)
                mem_test_get_total_bytes(ctx),
                100.0 * mem_test_get_processed_bytes(ctx) / mem_test_get_total_bytes(ctx));
         fflush(stdout);
-    } while (process_ret == 1);
+    } while (process_ret == MEM_TEST_RESULT_IN_PROGRESS);
     printf("\n");
 
-    if (process_ret == -1)
+    if (process_ret == MEM_TEST_RESULT_ERROR)
     {
         fprintf(stderr, "Write test failed: %s\n", mem_test_get_error(ctx));
         ret = -1;
         goto cleanup;
     }
 
-    if (mem_test_get_throughput(ctx, &throughput) == 0)
+    if (mem_test_get_throughput(ctx, &throughput) == MEM_TEST_ERR_NONE)
         printf("Write throughput: %.2f MB/s\n\n", throughput);
 
     /* 重置为读取模式 */
-    if (mem_test_reset(ctx, MEM_TEST_MODE_READ) != 0)
+    if (mem_test_reset(ctx, MEM_TEST_MODE_READ) != MEM_TEST_ERR_NONE)
     {
         fprintf(stderr, "Failed to reset context for read: %s\n", mem_test_get_error(ctx));
         ret = -1;
@@ -151,21 +160,21 @@ static int run_test_shared(size_t total_size, size_t block_size)
                mem_test_get_total_bytes(ctx),
                100.0 * mem_test_get_processed_bytes(ctx) / mem_test_get_total_bytes(ctx));
         fflush(stdout);
-    } while (process_ret == 1);
+    } while (process_ret == MEM_TEST_RESULT_IN_PROGRESS);
     printf("\n");
 
-    if (process_ret == -1)
+    if (process_ret == MEM_TEST_RESULT_ERROR)
     {
         fprintf(stderr, "Read test failed: %s\n", mem_test_get_error(ctx));
         ret = -1;
         goto cleanup;
     }
 
-    if (mem_test_get_throughput(ctx, &throughput) == 0)
+    if (mem_test_get_throughput(ctx, &throughput) == MEM_TEST_ERR_NONE)
         printf("Read throughput: %.2f MB/s\n\n", throughput);
 
     /* 重置为验证模式 */
-    if (mem_test_reset(ctx, MEM_TEST_MODE_VERIFY) != 0)
+    if (mem_test_reset(ctx, MEM_TEST_MODE_VERIFY) != MEM_TEST_ERR_NONE)
     {
         fprintf(stderr, "Failed to reset context for verify: %s\n", mem_test_get_error(ctx));
         ret = -1;
@@ -181,17 +190,17 @@ static int run_test_shared(size_t total_size, size_t block_size)
                mem_test_get_total_bytes(ctx),
                100.0 * mem_test_get_processed_bytes(ctx) / mem_test_get_total_bytes(ctx));
         fflush(stdout);
-    } while (process_ret == 1);
+    } while (process_ret == MEM_TEST_RESULT_IN_PROGRESS);
     printf("\n");
 
-    if (process_ret == -1)
+    if (process_ret == MEM_TEST_RESULT_ERROR)
     {
         fprintf(stderr, "Verify test failed: %s\n", mem_test_get_error(ctx));
         ret = -1;
         goto cleanup;
     }
 
-    if (mem_test_get_throughput(ctx, &throughput) == 0)
+    if (mem_test_get_throughput(ctx, &throughput) == MEM_TEST_ERR_NONE)
         printf("Verify throughput: %.2f MB/s\n", throughput);
 
 cleanup:
