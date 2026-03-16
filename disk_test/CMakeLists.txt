@@ -27,7 +27,7 @@ endif()
 target_include_directories(disktest PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
 # 测试可执行文件
-add_executable(disktest_demo demo/test_disk_test.c)
+add_executable(disktest_demo demo/disk_test_demo.c)
 target_link_libraries(disktest_demo disktest)
 target_include_directories(disktest_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 if(NOT BUILD_SHARED_LIBS)
